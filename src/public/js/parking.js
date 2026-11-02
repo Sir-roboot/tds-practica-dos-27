@@ -213,6 +213,16 @@ function renderReservations() {
       // TODO PRACTICE 2:
       // Add an extension action for eligible reservations and connect it to
       // the extension form. Keep the cancellation action working.
+      const extendButton = makeElement('button', 'button button-primary', 'Extender');
+      extendButton.type = 'button';
+      extendButton.setAttribute('aria-expanded', 'false');
+      const extendForm = createExtendForm(reservation);
+      extendForm.hidden = true;
+      extendButton.addEventListener('click', () => {
+        extendForm.hidden = !extendForm.hidden;
+        extendButton.setAttribute('aria-expanded', String(!extendForm.hidden));
+        if (!extendForm.hidden) extendForm.querySelector('input').focus();
+      });
       const cancelButton = makeElement('button', 'button button-danger', 'Cancelar');
       cancelButton.type = 'button';
       cancelButton.addEventListener('click', () => {
@@ -224,8 +234,8 @@ function renderReservations() {
         }
         cancelReservation(reservation._id, cancelButton);
       });
-      actions.append(cancelButton);
-      card.append(actions);
+      actions.append(extendButton, cancelButton);
+      card.append(actions, extendForm);
     }
     reservationsList.append(card);
   }
@@ -246,6 +256,42 @@ function createExtendForm(reservation) {
   // TODO PRACTICE 2:
   // Read the requested time, send the extension request, handle the result,
   // and refresh the affected views when the operation succeeds.
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const newEnd = new Date(input.value);
+    if (!input.value || Number.isNaN(newEnd.getTime()) || newEnd <= new Date(reservation.endTime)) {
+      message.textContent = 'La nueva hora debe ser posterior al fin actual.';
+      return;
+    }
+
+    button.disabled = true;
+    message.textContent = '';
+    try {
+      const response = await fetch(`/api/reservations/${reservation._id}/extend`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ endTime: newEnd.toISOString() })
+      });
+      if (!response.ok) {
+        message.textContent = response.status === 400 ? 'La fecha solicitada no es válida.'
+          : response.status === 404 ? 'No se encontró la reservación.'
+          : response.status === 409 ? 'La reservación ya no puede extenderse o existe un conflicto de horario.'
+          : 'No fue posible extender la reservación.';
+        return;
+      }
+      await Promise.all([loadReservations(), loadSpots()]);
+      if (reservationsFailed) {
+        setMessage(reservationsMessage, 'La extensión se guardó, pero no se pudo actualizar la lista.', 'error');
+      } else {
+        setMessage(reservationsMessage, 'Reservación extendida correctamente.', 'success');
+      }
+    } catch (error) {
+      console.error(error);
+      message.textContent = 'No fue posible conectar con el servidor.';
+    } finally {
+      button.disabled = false;
+    }
+  });
   return form;
 }
 
